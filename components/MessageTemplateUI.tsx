@@ -68,6 +68,12 @@ export default function MessageTemplateUI() {
     // ✅ MMS 문구 검증 여부
     const [isMmsCopyChecked, setIsMmsCopyChecked] = useState(false);
 
+    // AI 기능
+    const [aiModalOpen, setAiModalOpen] = useState(false); // 이미 있으면 생략
+    const [aiPrompt, setAiPrompt] = useState("");          // 새로 추가
+
+
+
     // ───────── 공통 유틸 ─────────
 
     const reservationLabel = formatReservationLabel(
@@ -144,14 +150,37 @@ export default function MessageTemplateUI() {
         // TODO: 저장 + 승인요청 API 연동
     };
 
+    const handleGenerateWithAI = () => {
+        if (!aiPrompt.trim()) return;
+
+        // ⬇️ 지금은 일단 콘솔만 찍고 모달만 닫는다.
+        console.log("AI 프롬프트:", aiPrompt);
+        // 나중 단계에서 여기서 GPT API를 호출하고
+        // rcsContents / mmsContents를 채울 거야.
+        setAiModalOpen(false);
+    };
+
+
     return (
         <div className="mx-auto max-w-6xl p-8 space-y-8 bg-slate-50">
-            <header className="flex flex-col gap-2">
-                <h1 className="text-2xl font-bold">예약발송 · 메시지 템플릿 등록</h1>
-                <p className="text-sm text-slate-600">
-                    내용 및 정보를 작성한 뒤 검토와 승인 단계를 거쳐 메시지가 발송됩니다.
-                </p>
+            <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold">예약발송 · 메시지 템플릿 등록</h1>
+                    <p className="text-sm text-slate-600">
+                        내용 및 정보를 작성한 뒤 검토와 승인 단계를 거쳐 메시지가 발송됩니다.
+                    </p>
+                </div>
+
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 md:mt-0 text-xs"
+                    onClick={() => setAiModalOpen(true)}   // 아직은 그냥 true만
+                >
+                    ✨ AI로 메시지 작성하기
+                </Button>
             </header>
+
 
             {/* 📌 RCS 미지원 시 대체 MMS 발송 설정 안내 */}
             <section className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-[13px] leading-5 text-amber-800 space-y-1">
@@ -467,6 +496,135 @@ export default function MessageTemplateUI() {
                     setReservationModalOpen(false);
                 }}
             />
+
+
+            {/* AI 프롬프트 입력 모달 */}
+            {aiModalOpen && (
+                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+                    <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl px-8 py-6 space-y-6">
+                        {/* 헤더 */}
+                        <div className="flex items-start justify-between">
+                            <div className="flex gap-3">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50 text-xl">
+                                    ✨
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-900">
+                                        AI로 메시지 자동 작성
+                                    </h3>
+                                    <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
+                                        대상·목적·전달하고 싶은 내용을 간단히 적어주면
+                                        RCS / MMS 메시지 초안을 자동으로 만들어 드려요.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="text-sm text-slate-400 hover:text-slate-600"
+                                onClick={() => setAiModalOpen(false)}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* 예시 프롬프트 탭처럼 보이는 영역 */}
+                        <div className="flex flex-wrap gap-2 text-[11px]">
+                            {[
+                                "연말 KT VIP 고객 대상 데이터 쿠폰 증정 이벤트 안내",
+                                "요금제 변경 안내와 혜택 요약 메시지",
+                                "미납 요금 납부 기한 안내(비광고, 안내 톤)",
+                            ].map((example, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setAiPrompt(example)}
+                                    className={`
+              rounded-full px-4 py-1.5 border text-xs
+              ${
+                                        aiPrompt === example
+                                            ? "bg-teal-500 border-teal-500 text-white"
+                                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                    }
+            `}
+                                >
+                                    예시 {idx + 1}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* 프롬프트 입력 */}
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-semibold text-slate-700">
+                                    프롬프트
+                                </label>
+                                <span className="text-[11px] text-slate-400">
+            {aiPrompt.length}자
+          </span>
+                            </div>
+                            <textarea
+                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm min-h-[160px] resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                placeholder="예) 연말에 VIP 고객 10만 명에게 보내는 감사 인사와 데이터 쿠폰 증정 안내 메시지를 만들어줘..."
+                                value={aiPrompt}
+                                onChange={(e) => setAiPrompt(e.target.value)}
+                            />
+                        </div>
+
+                        {/* 하단 설명 + 버튼 */}
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-[11px] text-slate-400 leading-relaxed sm:max-w-xs">
+                                AI가 작성한 내용은 바로 RCS / MMS 편집 영역에 채워지고,
+                                저장 전에는 언제든지 직접 수정할 수 있어요.
+                            </p>
+                            <div className="flex justify-end gap-2 text-xs">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="px-4"
+                                    onClick={() => setAiModalOpen(false)}
+                                >
+                                    취소
+                                </Button>
+                                <Button
+                                    type="button"
+                                    className="px-4"
+                                    onClick={handleGenerateWithAI}
+                                    disabled={!aiPrompt.trim()}
+                                >
+                                    이 프롬프트로 작성하기
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
+
+            {/* 플로팅 버튼 */}
+            <button
+                onClick={() => setAiModalOpen(true)}
+                className="
+                    fixed
+                    bottom-6 right-6
+                    z-50
+                    w-16 h-16
+                    rounded-full
+                    bg-white
+                    border-2 border-teal-500
+                    shadow-[0_12px_30px_rgba(0,0,0,0.25)]
+                    flex items-center justify-center
+                    text-3xl
+                    text-yellow-500
+                    hover:shadow-[0_15px_35px_rgba(0,0,0,0.35)]
+                    hover:scale-110
+                    transition-all
+                    active:scale-95
+                  "
+            >
+                ✨
+            </button>
+
         </div>
     );
 }
