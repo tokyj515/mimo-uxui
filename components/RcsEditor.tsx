@@ -45,35 +45,38 @@ const RcsEditor: React.FC<RcsEditorProps> = ({
             const updated: Record<string, LangContent> = {};
 
             Object.entries(prev).forEach(([code, content]) => {
-                let slides = [...content.slides];
+                let slides: Slide[] = [...content.slides];
 
                 if (slides.length > newCount) {
+                    // 더 많으면 잘라냄
                     slides = slides.slice(0, newCount);
                 } else if (slides.length < newCount) {
-                    slides = [
-                        ...slides,
-                        ...Array.from(
-                            { length: newCount - slides.length },
-                            () => ({
-                                title: "",
-                                body: "",
-                                imageName: "",
-                                buttonCount: 0,
-                                button1Label: "",
-                                button2Label: "",
-                                button1Url: "",
-                                button2Url: "",
-                            }),
-                        ),
-                    ];
+                    // 부족하면 빈 슬라이드 채워 넣기
+                    const diff = newCount - slides.length;
+
+                    const extraSlides: Slide[] = Array.from(
+                        { length: diff },
+                        (): Slide => ({
+                            title: "",
+                            body: "",
+                            imageName: "",
+                            buttonCount: 0 as 0, // 0 | 1 | 2 중 0이라는 걸 명시
+                            button1Label: "",
+                            button2Label: "",
+                            button1Url: "",
+                            button2Url: "",
+                        }),
+                    );
+
+                    slides = [...slides, ...extraSlides];
                 }
 
                 updated[code] = { slides };
             });
-
             return updated;
         });
     };
+
 
     const handleSlideCountChange = (newCount: number) => {
         setSlideCount(newCount);
