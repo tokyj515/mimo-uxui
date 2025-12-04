@@ -177,6 +177,9 @@ export default function MessageTemplateUI() {
     // ✅ 문구 검증 여부
     const [isCopyChecked, setIsCopyChecked] = useState(false);
 
+    // ✅ MMS 문구 검증 여부
+    const [isMmsCopyChecked, setIsMmsCopyChecked] = useState(false);
+
 
 
 
@@ -382,6 +385,8 @@ export default function MessageTemplateUI() {
                 ...patch,
             },
         }));
+        // MMS 내용이 바뀌면 검토 다시 필요
+        setIsMmsCopyChecked(false);
     };
 
     // ──────────────────────────────────────────────────────────── JSX 시작
@@ -1230,6 +1235,37 @@ export default function MessageTemplateUI() {
                                 }
                             />
                         </div>
+                        {/* ✅ MMS 문구 검토 상태 + 버튼 */}
+                        <div
+                            className={`mt-3 flex items-center justify-between rounded-md border px-3 py-2 text-[11px] ${
+                                isMmsCopyChecked
+                                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                                    : "border-amber-300 bg-amber-50 text-amber-800"
+                            }`}
+                        >
+                            <div className="flex items-center gap-2">
+    <span className="text-base">
+      {isMmsCopyChecked ? "✅" : "⚠️"}
+    </span>
+                                <span className="font-medium">
+      {isMmsCopyChecked ? "MMS 문구 검토 완료" : "MMS 문구 검토가 필요합니다."}
+    </span>
+                                {isMmsCopyChecked && (
+                                    <span className="text-[10px] opacity-80">
+        (내용 수정 시 다시 검토 필요)
+      </span>
+                                )}
+                            </div>
+                            <Button
+                                type="button"
+                                variant={isMmsCopyChecked ? "outline" : "solid"}
+                                className="h-8 px-3 text-[11px]"
+                                onClick={() => setIsMmsCopyChecked(true)} // 여기서 실제 검증 API 호출해도 됨
+                            >
+                                {isMmsCopyChecked ? "다시 검토하기" : "문구 검토"}
+                            </Button>
+                        </div>
+
                     </div>
                 </div>
             </section>
