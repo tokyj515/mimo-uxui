@@ -71,6 +71,8 @@ export default function MessageTemplateUI() {
     // AI 기능
     const [aiModalOpen, setAiModalOpen] = useState(false); // 이미 있으면 생략
     const [aiPrompt, setAiPrompt] = useState("");          // 새로 추가
+    const [aiLoading, setAiLoading] = useState(false);
+
 
 
 
@@ -150,15 +152,52 @@ export default function MessageTemplateUI() {
         // TODO: 저장 + 승인요청 API 연동
     };
 
-    const handleGenerateWithAI = () => {
+    const handleGenerateWithAI = async () => {
         if (!aiPrompt.trim()) return;
 
-        // ⬇️ 지금은 일단 콘솔만 찍고 모달만 닫는다.
-        console.log("AI 프롬프트:", aiPrompt);
-        // 나중 단계에서 여기서 GPT API를 호출하고
-        // rcsContents / mmsContents를 채울 거야.
-        setAiModalOpen(false);
+        setAiLoading(true);
+
+        try {
+            const res = await fetch("/api/generate-message", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: aiPrompt,
+                    enabledLangs,
+                    slideCount,
+                    adType,
+                }),
+            });
+
+            if (!res.ok) {
+                throw new Error("failed to generate");
+            }
+
+            const data = (await res.json()) as {
+                rcs: typeof rcsContents;
+                mms: typeof mmsContents;
+            };
+
+            console.log("지피티 응답!: ", data);
+
+            // 👉 폼 상태 채우기
+            setRcsContents(data.rcs);
+            setMmsContents(data.mms);
+
+            // AI가 새로 채웠으니 검토 플래그는 다시 false
+            setIsCopyChecked(false);
+            setIsMmsCopyChecked(false);
+
+            // 모달 닫기
+            setAiModalOpen(false);
+        } catch (e) {
+            console.error(e);
+            alert("AI 작성 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.");
+        } finally {
+            setAiLoading(false);
+        }
     };
+
 
 
     return (
@@ -589,12 +628,12 @@ export default function MessageTemplateUI() {
                                     type="button"
                                     className="px-4"
                                     onClick={handleGenerateWithAI}
-                                    disabled={!aiPrompt.trim()}
+                                    disabled={!aiPrompt.trim() || aiLoading}
                                 >
-                                    이 프롬프트로 작성하기
+                                    {aiLoading ? "작성 중..." : "이 프롬프트로 작성하기"}
                                 </Button>
-                            </div>
                         </div>
+                    </div>
                     </div>
                 </div>
             )}

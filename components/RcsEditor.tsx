@@ -124,8 +124,28 @@ const RcsEditor: React.FC<RcsEditorProps> = ({
         updateRcsCurrentSlide({ [field]: value } as Partial<Slide>);
     };
 
-    const currentRcs = rcsContents[activeLang].slides[currentSlideIndex];
+    // 활성 언어에 대한 RCS 콘텐츠가 없을 수도 있으니 방어 로직 추가
+    const langContent = rcsContents[activeLang];
+
+    // 아예 없으면 기본 빈 슬라이드로 대체
+    if (!langContent || !langContent.slides || langContent.slides.length === 0) {
+        return (
+            <section className="bg-white rounded-xl shadow p-6">
+                <p className="text-sm text-slate-500">
+                    선택된 언어에 대한 RCS 내용이 아직 없습니다. AI로 작성하거나 직접 입력해 주세요.
+                </p>
+            </section>
+        );
+    }
+
+    const slides = langContent.slides;
+
+    // 현재 인덱스가 슬라이드 길이보다 크면 마지막 슬라이드로 보정
+    const safeIndex = Math.min(currentSlideIndex, slides.length - 1);
+    const currentRcs = slides[safeIndex];
+
     const maxSlideIndex = slideCount - 1;
+
 
     const goPrevSlide = () => {
         setCurrentSlideIndex((idx) => (idx > 0 ? idx - 1 : idx));
