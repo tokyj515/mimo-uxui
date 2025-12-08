@@ -17,6 +17,33 @@ import {
     formatReservationLabel,
 } from "@/lib/messageTemplate";
 
+type SendType = "SMS" | "MMS" | "RCS" | "RCS_MMS" | "RCS_CAROUSEL";
+
+type AiGenerateResponse = {
+    sendType: SendType;
+    common: {
+        messageName: string;
+        adType: "광고" | "비광고";
+        sendPurpose: "공지" | "이벤트" | "알림" | "기타";
+        callbackType: "대표번호" | "080" | "개인번호";
+        enabledLangs: string[];
+        reservationDate: string; // "YYYY-MM-DD"
+        reservationTime: string; // "HH:MM"
+        myktLink: "포함" | "미포함";
+        closingRemark: "포함" | "미포함";
+        imagePosition: "위" | "아래";
+    };
+    rcs: {
+        slideCount: number;
+        langs: string[];
+        contents: Record<string, LangContent>;
+    };
+    mms: {
+        langs: string[];
+        contents: Record<string, MmsContent>;
+    };
+};
+
 export default function MessageTemplateUI() {
     // 언어 상태 (공통)
     const [activeLang, setActiveLang] = useState<string>("ko");
@@ -24,13 +51,13 @@ export default function MessageTemplateUI() {
 
     // RCS Carousel 내용 상태
     const [rcsContents, setRcsContents] = useState<Record<string, LangContent>>(
-        createInitialLangState,
+        createInitialLangState
     );
     const [slideCount, setSlideCount] = useState<number>(3); // 2~5장
 
     // MMS 내용 상태
     const [mmsContents, setMmsContents] = useState<Record<string, MmsContent>>(
-        createInitialMmsState,
+        createInitialMmsState
     );
 
     // 공통 발송 조건 상태
@@ -69,18 +96,15 @@ export default function MessageTemplateUI() {
     const [isMmsCopyChecked, setIsMmsCopyChecked] = useState(false);
 
     // AI 기능
-    const [aiModalOpen, setAiModalOpen] = useState(false); // 이미 있으면 생략
-    const [aiPrompt, setAiPrompt] = useState("");          // 새로 추가
+    const [aiModalOpen, setAiModalOpen] = useState(false);
+    const [aiPrompt, setAiPrompt] = useState("");
     const [aiLoading, setAiLoading] = useState(false);
-
-
-
 
     // ───────── 공통 유틸 ─────────
 
     const reservationLabel = formatReservationLabel(
         reservationDate,
-        reservationTime,
+        reservationTime
     );
 
     const openReservationModal = () => {
@@ -128,12 +152,12 @@ export default function MessageTemplateUI() {
         setCheckTypes((prev) =>
             prev.includes(item)
                 ? prev.filter((t) => t !== item)
-                : [...prev, item],
+                : [...prev, item]
         );
     };
 
     const enabledLangObjects = LANGS.filter((l) =>
-        enabledLangs.includes(l.code),
+        enabledLangs.includes(l.code)
     );
 
     // 저장 버튼
@@ -173,18 +197,55 @@ export default function MessageTemplateUI() {
                 throw new Error("failed to generate");
             }
 
-            const data = (await res.json()) as {
-                rcs: typeof rcsContents;
-                mms: typeof mmsContents;
-            };
+            const data = (await res.json()) as AiGenerateResponse;
 
             console.log("지피티 응답!: ", data);
 
-            // 👉 폼 상태 채우기
-            setRcsContents(data.rcs);
-            setMmsContents(data.mms);
+            // ── 공통 설정 반영 ──
+            const common = data.common;
 
-            // AI가 새로 채웠으니 검토 플래그는 다시 false
+            if (common.messageName) setMessageName(common.messageName);
+            if (common.adType) setAdType(common.adType);
+            if (common.sendPurpose) setSendPurpose(common.sendPurpose);
+            if (common.callbackType) setCallbackType(common.callbackType);
+            if (common.enabledLangs && common.enabledLangs.length > 0) {
+                setEnabledLangs(common.enabledLangs);
+                // activeLang이 비활성 언어가 되면 첫 언어로 변경
+                if (!common.enabledLangs.includes(activeLang)) {
+                    setActiveLang(common.enabledLangs[0]);
+                }
+            }
+            if (common.reservationDate) setReservationDate(common.reservationDate);
+            if (common.reservationTime) setReservationTime(common.reservationTime);
+
+            // 대체 MMS 설정 반영
+            if (common.myktLink) setMyktLink(common.myktLink);
+            if (common.closingRemark) setClosingRemark(common.closingRemark);
+            if (common.imagePosition) setImagePosition(common.imagePosition);
+
+            // ── RCS / MMS 내용 반영 ──
+
+            if (data.rcs && data.rcs.contents) {
+                setSlideCount(data.rcs.slideCount || slideCount);
+                setRcsContents((prev) => {
+                    // 기존 구조와 동일한 형태이므로 그냥 덮어쓴다
+                    return {
+                        ...prev,
+                        ...data.rcs.contents,
+                    };
+                });
+            }
+
+            if (data.mms && data.mms.contents) {
+                setMmsContents((prev) => {
+                    return {
+                        ...prev,
+                        ...data.mms.contents,
+                    };
+                });
+            }
+
+            // AI가 새로 채웠으니 검토 플래그 초기화
             setIsCopyChecked(false);
             setIsMmsCopyChecked(false);
 
@@ -197,8 +258,6 @@ export default function MessageTemplateUI() {
             setAiLoading(false);
         }
     };
-
-
 
     return (
         <div className="mx-auto max-w-6xl p-8 space-y-8 bg-slate-50">
@@ -214,12 +273,11 @@ export default function MessageTemplateUI() {
                     type="button"
                     variant="outline"
                     className="mt-3 md:mt-0 text-xs"
-                    onClick={() => setAiModalOpen(true)}   // 아직은 그냥 true만
+                    onClick={() => setAiModalOpen(true)}
                 >
                     ✨ AI로 메시지 작성하기
                 </Button>
             </header>
-
 
             {/* 📌 RCS 미지원 시 대체 MMS 발송 설정 안내 */}
             <section className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-[13px] leading-5 text-amber-800 space-y-1">
@@ -264,7 +322,9 @@ export default function MessageTemplateUI() {
                                             ? "bg-teal-500 text-white border-teal-500"
                                             : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                                     }`}
-                                    onClick={() => setSendSystem(item.code as "KOS" | "MIMO")}
+                                    onClick={() =>
+                                        setSendSystem(item.code as "KOS" | "MIMO")
+                                    }
                                 >
                                     {item.label}
                                 </button>
@@ -287,9 +347,7 @@ export default function MessageTemplateUI() {
                                     <button
                                         key={type}
                                         type="button"
-                                        onClick={() =>
-                                            setAdType(type as "비광고" | "광고")
-                                        }
+                                        onClick={() => setAdType(type as "비광고" | "광고")}
                                         className={`h-8 px-3 inline-flex items-center justify-center rounded-full border text-xs transition ${
                                             adType === type
                                                 ? "bg-teal-500 text-white border-teal-500"
@@ -351,25 +409,25 @@ export default function MessageTemplateUI() {
                             4대 검토사항 <span className="text-red-500">*</span>
                         </label>
                         <div className="grid grid-cols-2 gap-3 w-full">
-                            {(["법률", "정보보호", "리스크", "공정경쟁"] as CheckType[]).map(
-                                (item) => {
-                                    const selected = checkTypes.includes(item);
-                                    return (
-                                        <button
-                                            key={item}
-                                            type="button"
-                                            className={`h-8 px-3 w-full inline-flex items-center justify-center rounded-full border text-xs transition ${
-                                                selected
-                                                    ? "bg-teal-500 text-white border-teal-500 shadow-sm"
-                                                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
-                                            }`}
-                                            onClick={() => toggleCheckType(item)}
-                                        >
-                                            {item}
-                                        </button>
-                                    );
-                                },
-                            )}
+                            {(
+                                ["법률", "정보보호", "리스크", "공정경쟁"] as CheckType[]
+                            ).map((item) => {
+                                const selected = checkTypes.includes(item);
+                                return (
+                                    <button
+                                        key={item}
+                                        type="button"
+                                        className={`h-8 px-3 w-full inline-flex items-center justify-center rounded-full border text-xs transition ${
+                                            selected
+                                                ? "bg-teal-500 text-white border-teal-500 shadow-sm"
+                                                : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                                        }`}
+                                        onClick={() => toggleCheckType(item)}
+                                    >
+                                        {item}
+                                    </button>
+                                );
+                            })}
                         </div>
                         <p className="text-[11px] text-slate-400">
                             * 관련되는 항목을 모두 선택할 수 있습니다.
@@ -536,7 +594,6 @@ export default function MessageTemplateUI() {
                 }}
             />
 
-
             {/* AI 프롬프트 입력 모달 */}
             {aiModalOpen && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
@@ -553,7 +610,8 @@ export default function MessageTemplateUI() {
                                     </h3>
                                     <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
                                         대상·목적·전달하고 싶은 내용을 간단히 적어주면
-                                        RCS / MMS 메시지 초안을 자동으로 만들어 드려요.
+                                        SMS / MMS / RCS / RCS Carousel 및 대체 MMS까지
+                                        한 번에 초안을 만들어 드려요.
                                     </p>
                                 </div>
                             </div>
@@ -569,22 +627,22 @@ export default function MessageTemplateUI() {
                         {/* 예시 프롬프트 탭처럼 보이는 영역 */}
                         <div className="flex flex-wrap gap-2 text-[11px]">
                             {[
-                                "연말 KT VIP 고객 대상 데이터 쿠폰 증정 이벤트 안내",
-                                "요금제 변경 안내와 혜택 요약 메시지",
-                                "미납 요금 납부 기한 안내(비광고, 안내 톤)",
+                                "연말 KT VIP 고객 대상으로 데이터 쿠폰 증정 이벤트를 알리는 RCS Carousel 메시지를 만들고 싶어. 카드 3장 정도로 혜택 소개와 유의사항을 나눠줘.",
+                                "미납 요금 납부 기한 안내 문자를 보낼 건데, 비광고성 안내 톤으로 SMS나 간단한 MMS가 좋을 것 같아.",
+                                "신규 요금제 출시 프로모션을 하루 동안 진행하는데, RCS + 대체 MMS 조합으로 버튼까지 포함된 광고성 메시지를 만들고 싶어.",
                             ].map((example, idx) => (
                                 <button
                                     key={idx}
                                     type="button"
                                     onClick={() => setAiPrompt(example)}
                                     className={`
-              rounded-full px-4 py-1.5 border text-xs
-              ${
+                    rounded-full px-4 py-1.5 border text-xs
+                    ${
                                         aiPrompt === example
                                             ? "bg-teal-500 border-teal-500 text-white"
                                             : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                                     }
-            `}
+                  `}
                                 >
                                     예시 {idx + 1}
                                 </button>
@@ -598,12 +656,12 @@ export default function MessageTemplateUI() {
                                     프롬프트
                                 </label>
                                 <span className="text-[11px] text-slate-400">
-            {aiPrompt.length}자
-          </span>
+                  {aiPrompt.length}자
+                </span>
                             </div>
                             <textarea
                                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm min-h-[160px] resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                                placeholder="예) 연말에 VIP 고객 10만 명에게 보내는 감사 인사와 데이터 쿠폰 증정 안내 메시지를 만들어줘..."
+                                placeholder="예) 연말에 VIP 고객 10만 명에게 보내는 감사 인사와 데이터 쿠폰 증정 안내 메시지를 만들고 싶어. RCS Carousel로 3장 구성하고, RCS 미지원 단말에는 MMS로 대체 발송하고 싶어..."
                                 value={aiPrompt}
                                 onChange={(e) => setAiPrompt(e.target.value)}
                             />
@@ -612,8 +670,9 @@ export default function MessageTemplateUI() {
                         {/* 하단 설명 + 버튼 */}
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-[11px] text-slate-400 leading-relaxed sm:max-w-xs">
-                                AI가 작성한 내용은 바로 RCS / MMS 편집 영역에 채워지고,
-                                저장 전에는 언제든지 직접 수정할 수 있어요.
+                                AI가 결정한 메시지 타입(SMS / MMS / RCS / RCS Carousel)과
+                                대체 발송 MMS 설정까지 이 화면에 바로 반영됩니다.
+                                실제 발송 전에 꼭 한 번 더 검토해 주세요.
                             </p>
                             <div className="flex justify-end gap-2 text-xs">
                                 <Button
@@ -632,38 +691,35 @@ export default function MessageTemplateUI() {
                                 >
                                     {aiLoading ? "작성 중..." : "이 프롬프트로 작성하기"}
                                 </Button>
+                            </div>
                         </div>
-                    </div>
                     </div>
                 </div>
             )}
-
-
 
             {/* 플로팅 버튼 */}
             <button
                 onClick={() => setAiModalOpen(true)}
                 className="
-                    fixed
-                    bottom-6 right-6
-                    z-50
-                    w-16 h-16
-                    rounded-full
-                    bg-white
-                    border-2 border-teal-500
-                    shadow-[0_12px_30px_rgba(0,0,0,0.25)]
-                    flex items-center justify-center
-                    text-3xl
-                    text-yellow-500
-                    hover:shadow-[0_15px_35px_rgba(0,0,0,0.35)]
-                    hover:scale-110
-                    transition-all
-                    active:scale-95
-                  "
+          fixed
+          bottom-6 right-6
+          z-50
+          w-16 h-16
+          rounded-full
+          bg-white
+          border-2 border-teal-500
+          shadow-[0_12px_30px_rgba(0,0,0,0.25)]
+          flex items-center justify-center
+          text-3xl
+          text-yellow-500
+          hover:shadow-[0_15px_35px_rgba(0,0,0,0.35)]
+          hover:scale-110
+          transition-all
+          active:scale-95
+        "
             >
                 ✨
             </button>
-
         </div>
     );
 }
