@@ -216,7 +216,12 @@ const RcsEditor: React.FC<RcsEditorProps> = ({
                                 <div className="text-xs font-semibold text-slate-900 truncate">
                                     {currentRcs.title || "메시지 제목 미입력"}
                                 </div>
-                                <p className="text-[11px] leading-snug text-slate-700 max-h-24 overflow-hidden">
+                                <p
+                                    className="
+    text-[11px] leading-snug text-slate-700
+    max-h-24 overflow-y-auto whitespace-pre-line
+  "
+                                >
                                     {currentRcs.body ||
                                         "작성 중인 메시지 내용이 이 영역에 표시됩니다."}
                                 </p>

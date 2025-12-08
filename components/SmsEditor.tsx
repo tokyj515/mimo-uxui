@@ -59,10 +59,17 @@ const SmsEditor: React.FC<SmsEditorProps> = ({
                             9:41 · SMS
                         </div>
                         <div className="mt-2 bg-white rounded-2xl shadow-sm p-3 flex-1">
-                            <div className="w-full h-full rounded-2xl bg-slate-50 border border-slate-200 p-3 text-[11px] leading-snug text-slate-800 overflow-hidden">
+                            <div
+                                className="
+      w-full h-full rounded-2xl bg-slate-50 border border-slate-200
+      p-3 text-[11px] leading-snug text-slate-800
+      overflow-y-auto whitespace-pre-line
+    "
+                            >
                                 {currentBody || "작성 중인 SMS 본문이 이 영역에 표시됩니다."}
                             </div>
                         </div>
+
                     </div>
                 </div>
 

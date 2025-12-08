@@ -126,10 +126,16 @@ const RcsSingleEditor: React.FC<RcsSingleEditorProps> = ({
                                 <div className="text-xs font-semibold text-slate-900 truncate">
                                     {currentSlide.title || "메시지 제목 미입력"}
                                 </div>
-                                <p className="text-[11px] leading-snug text-slate-700 max-h-24 overflow-hidden">
+                                <p
+                                    className="
+    text-[11px] leading-snug text-slate-700
+    max-h-24 overflow-y-auto whitespace-pre-line
+  "
+                                >
                                     {currentSlide.body ||
                                         "작성 중인 메시지 내용이 이 영역에 표시됩니다."}
                                 </p>
+
                             </div>
 
                             {/* 버튼 프리뷰 */}
