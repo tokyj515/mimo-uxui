@@ -43,15 +43,30 @@ type AiGenerateResponse = {
         closingRemark: "포함" | "미포함";
         imagePosition: "위" | "아래";
     };
-    rcs: {
+
+    // ✅ 추가: 서버가 SMS를 줄 때 구조에 맞춰 받기
+    sms?: {
+        contents: Record<string, { body: string }>;
+    };
+
+    rcs?: {
         slideCount: number;
-        langs: string[];
+        langs?: string[];
         contents: Record<string, LangContent>;
     };
-    mms: {
-        langs: string[];
+
+    mms?: {
+        langs?: string[];
         contents: Record<string, MmsContent>;
     };
+};
+
+type GeneratePayload = {
+    prompt: string;
+    enabledLangs: string[];
+    adType: "광고" | "비광고";
+    sendType?: SendType;
+    slideCount?: number;
 };
 
 // ─────────────────────────── 컴포넌트 ───────────────────────────
@@ -113,10 +128,7 @@ export default function MessageTemplateUI() {
 
     // ─────────────────────────── 공통 유틸 / 핸들러 ────────────────────────────────────
 
-    const reservationLabel = formatReservationLabel(
-        reservationDate,
-        reservationTime
-    );
+    const reservationLabel = formatReservationLabel(reservationDate, reservationTime);
 
     const openReservationModal = () => {
         setReservationModalOpen(true);
@@ -146,9 +158,7 @@ export default function MessageTemplateUI() {
         );
     };
 
-    const enabledLangObjects = LANGS.filter((l) =>
-        enabledLangs.includes(l.code)
-    );
+    const enabledLangObjects = LANGS.filter((l) => enabledLangs.includes(l.code));
 
     const handleVerifyVolume = () => {
         if (!reservationDate || !reservationTime) {
@@ -188,9 +198,7 @@ export default function MessageTemplateUI() {
         }
         if (
             !isMmsCopyChecked &&
-            (sendType === "MMS" ||
-                sendType === "RCS_MMS" ||
-                sendType === "RCS_CAROUSEL")
+            (sendType === "MMS" || sendType === "RCS_MMS" || sendType === "RCS_CAROUSEL")
         ) {
             alert("승인 요청 전 MMS 문구 검토를 완료해 주세요.");
             return;
@@ -207,70 +215,80 @@ export default function MessageTemplateUI() {
         setAiLoading(true);
 
         try {
+            // ✅ payload를 조건부로 구성
+            const payload: GeneratePayload = {
+                prompt: aiPrompt,
+                enabledLangs,
+                adType,
+                sendType,
+            };
+
+            // RCS_CAROUSEL일 때만 slideCount 추가
+            if (sendType === "RCS_CAROUSEL") {
+                payload.slideCount = slideCount;
+            }
+
             const res = await fetch("/api/generate-message", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    prompt: aiPrompt,
-                    enabledLangs,
-                    slideCount,
-                    adType,
-                }),
+                body: JSON.stringify(payload),
             });
 
-            if (!res.ok) {
-                throw new Error("failed to generate");
-            }
+            if (!res.ok) throw new Error("failed to generate");
 
             const data = (await res.json()) as AiGenerateResponse;
 
             console.log("지피티 응답!: ", data);
 
             // 메시지 타입 반영
-            if (data.sendType) {
-                setSendType(data.sendType);
-            }
+            if (data.sendType) setSendType(data.sendType);
 
             // 공통 설정 반영
             const common = data.common;
-            if (common.messageName) setMessageName(common.messageName);
-            if (common.adType) setAdType(common.adType);
-            if (common.sendPurpose) setSendPurpose(common.sendPurpose);
-            if (common.callbackType) setCallbackType(common.callbackType);
+            if (common?.messageName) setMessageName(common.messageName);
+            if (common?.adType) setAdType(common.adType);
+            if (common?.sendPurpose) setSendPurpose(common.sendPurpose);
+            if (common?.callbackType) setCallbackType(common.callbackType);
 
-            if (common.enabledLangs && common.enabledLangs.length > 0) {
+            if (common?.enabledLangs && common.enabledLangs.length > 0) {
                 setEnabledLangs(common.enabledLangs);
                 if (!common.enabledLangs.includes(activeLang)) {
                     setActiveLang(common.enabledLangs[0]);
                 }
             }
 
-            if (common.reservationDate) setReservationDate(common.reservationDate);
-            if (common.reservationTime) setReservationTime(common.reservationTime);
+            if (common?.reservationDate) setReservationDate(common.reservationDate);
+            if (common?.reservationTime) setReservationTime(common.reservationTime);
 
-            if (common.myktLink) setMyktLink(common.myktLink);
-            if (common.closingRemark) setClosingRemark(common.closingRemark);
-            if (common.imagePosition) setImagePosition(common.imagePosition);
+            if (common?.myktLink) setMyktLink(common.myktLink);
+            if (common?.closingRemark) setClosingRemark(common.closingRemark);
+            if (common?.imagePosition) setImagePosition(common.imagePosition);
 
-            // RCS / MMS 내용 반영
-            if (data.rcs && data.rcs.contents) {
-                if (data.rcs.slideCount) setSlideCount(data.rcs.slideCount);
-                setRcsContents((prev) => ({
-                    ...prev,
-                    ...data.rcs.contents,
-                }));
+            // ✅ SMS 내용 반영 (추가된 핵심)
+            if (data.sms?.contents) {
+                setSmsContents((prev) => {
+                    const next = { ...prev };
+                    for (const [lang, v] of Object.entries(data.sms!.contents)) {
+                        next[lang] = v?.body ?? "";
+                    }
+                    return next;
+                });
             }
 
-            if (data.mms && data.mms.contents) {
-                setMmsContents((prev) => ({
-                    ...prev,
-                    ...data.mms.contents,
-                }));
+            // RCS / MMS 내용 반영
+            if (data.rcs?.contents) {
+                if (data.rcs.slideCount) setSlideCount(data.rcs.slideCount);
+                setRcsContents((prev) => ({ ...prev, ...data.rcs!.contents }));
+            }
+
+            if (data.mms?.contents) {
+                setMmsContents((prev) => ({ ...prev, ...data.mms!.contents }));
             }
 
             // AI가 새로 채웠으니 검토 플래그 초기화
             setIsCopyChecked(false);
             setIsMmsCopyChecked(false);
+            setIsSmsCopyChecked(false); // ✅ 추가
 
             setAiModalOpen(false);
         } catch (e) {
@@ -430,15 +448,11 @@ export default function MessageTemplateUI() {
                                             isLangEnabled(lang.code)
                                                 ? "bg-emerald-50 border-emerald-500 text-emerald-700"
                                                 : "bg-white border-slate-300 text-slate-600"
-                                        } ${
-                                            lang.code === "ko" ? "cursor-default" : "hover:bg-slate-50"
-                                        }`}
+                                        } ${lang.code === "ko" ? "cursor-default" : "hover:bg-slate-50"}`}
                                     >
                     <span
                         className={`w-2 h-2 rounded-full ${
-                            isLangEnabled(lang.code)
-                                ? "bg-emerald-500"
-                                : "bg-slate-300"
+                            isLangEnabled(lang.code) ? "bg-emerald-500" : "bg-slate-300"
                         }`}
                     />
                                         <span>{lang.label}</span>
@@ -460,9 +474,7 @@ export default function MessageTemplateUI() {
                             4대 검토사항 <span className="text-red-500">*</span>
                         </label>
                         <div className="grid grid-cols-2 gap-3 w-full">
-                            {(
-                                ["법률", "정보보호", "리스크", "공정경쟁"] as CheckType[]
-                            ).map((item) => {
+                            {(["법률", "정보보호", "리스크", "공정경쟁"] as CheckType[]).map((item) => {
                                 const selected = checkTypes.includes(item);
                                 return (
                                     <button
@@ -536,13 +548,9 @@ export default function MessageTemplateUI() {
                             </Button>
                             <div className="min-w-[200px] flex items-center gap-1 text-xs">
                                 {reservationLabel ? (
-                                    <span className="font-semibold text-teal-700">
-                    ⏱ {reservationLabel}
-                  </span>
+                                    <span className="font-semibold text-teal-700">⏱ {reservationLabel}</span>
                                 ) : (
-                                    <span className="text-slate-500">
-                    예약일이 설정되지 않았습니다.
-                  </span>
+                                    <span className="text-slate-500">예약일이 설정되지 않았습니다.</span>
                                 )}
                             </div>
                         </div>
@@ -620,9 +628,7 @@ export default function MessageTemplateUI() {
                 />
             )}
 
-            {(sendType === "MMS" ||
-                sendType === "RCS_MMS" ||
-                sendType === "RCS_CAROUSEL") && (
+            {(sendType === "MMS" || sendType === "RCS_MMS" || sendType === "RCS_CAROUSEL") && (
                 <MmsEditor
                     activeLang={activeLang}
                     setActiveLang={setActiveLang}
@@ -642,12 +648,7 @@ export default function MessageTemplateUI() {
 
             {/* 하단 버튼 */}
             <div className="flex justify-end gap-3 mt-4">
-                <Button
-                    type="button"
-                    variant="outline"
-                    className="px-6 py-2 text-sm"
-                    onClick={handleSave}
-                >
+                <Button type="button" variant="outline" className="px-6 py-2 text-sm" onClick={handleSave}>
                     저장
                 </Button>
                 <Button
