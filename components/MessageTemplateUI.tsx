@@ -806,6 +806,8 @@ export default function MessageTemplateUI() {
                 setAiPrompt={setAiPrompt}
                 aiLoading={aiLoading}
                 onSubmit={handleGenerateWithAI}
+                enabledLangs={enabledLangs}
+                setEnabledLangs={setEnabledLangs}
             />
 
             {/* ✅ 첫 진입 AI 온보딩 오버레이 */}
