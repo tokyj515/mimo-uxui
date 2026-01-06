@@ -670,11 +670,19 @@ export default function MessageTemplateUI() {
                 />
             )}
 
+
+            {/* ✅ 저장/승인요청 안내 토스트 */}
             {/* 하단 버튼 */}
             <div className="flex justify-end gap-3 mt-4">
-                <Button type="button" variant="outline" className="px-6 py-2 text-sm" onClick={handleSave}>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="px-6 py-2 text-sm"
+                    onClick={handleSave}
+                >
                     저장
                 </Button>
+
                 <Button
                     type="button"
                     className="px-6 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white"
@@ -683,6 +691,99 @@ export default function MessageTemplateUI() {
                     저장&승인요청
                 </Button>
             </div>
+
+            {/* ✅ 딤 처리 + 중앙 알림 모달 */}
+            {saveToast && (
+                <div
+                    className="fixed inset-0 z-[999] flex items-center justify-center"
+                    role="dialog"
+                    aria-modal="true"
+                    onClick={() => setSaveToast(null)} // 바깥 클릭 닫기
+                >
+                    {/* 딤 배경 */}
+                    <div className="absolute inset-0 bg-black/50" />
+
+                    {/* 모달 카드 (클릭 전파 막기) */}
+                    <div
+                        className="relative w-[92%] max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 p-5"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {saveToast === "save" ? (
+                            <>
+                                <div className="flex items-start gap-3">
+                                    <div className="text-2xl">✅</div>
+                                    <div>
+                                        <div className="text-base font-semibold text-slate-900">
+                                            임시 저장 완료
+                                        </div>
+                                        <div className="mt-2 text-sm leading-6 text-slate-700">
+                                            현재 상태는 <b>임시 저장</b>입니다.
+                                            <br />
+                                            실제 발송을 위해서는 <b>“저장&승인요청”</b>을 꼭 진행해 주세요.
+                                        </div>
+                                        <div className="mt-3 text-[12px] text-slate-500">
+                                            * 문구/조건을 수정하면 검토 상태가 초기화될 수 있어요.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 flex justify-end gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="h-9 px-4 text-sm"
+                                        onClick={() => setSaveToast(null)}
+                                    >
+                                        확인
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        className="h-9 px-4 text-sm bg-teal-600 hover:bg-teal-700 text-white"
+                                        onClick={() => {
+                                            setSaveToast(null);
+                                            // 필요하면 여기서 바로 승인요청 흐름으로 연결 가능:
+                                            // handleSaveAndApprove();
+                                        }}
+                                    >
+                                        승인요청 하러가기
+                                    </Button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-start gap-3">
+                                    <div className="text-2xl">🎉</div>
+                                    <div>
+                                        <div className="text-base font-semibold text-slate-900">
+                                            문구 검토 · 승인요청 완료
+                                        </div>
+                                        <div className="mt-2 text-sm leading-6 text-slate-700">
+                                            검토 완료 상태로 <b>승인 요청</b>이 접수되었습니다.
+                                            <br />
+                                            이후 승인 결과(검토자 회신/상태)를 확인해 주세요.
+                                        </div>
+                                        <div className="mt-3 text-[12px] text-slate-500">
+                                            * 승인요청 이후 내용을 수정하면 검토 상태가 변경될 수 있습니다
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 flex justify-end gap-2">
+                                    <Button
+                                        type="button"
+                                        className="h-9 px-4 text-sm bg-teal-600 hover:bg-teal-700 text-white"
+                                        onClick={() => setSaveToast(null)}
+                                    >
+                                        확인
+                                    </Button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+
 
             {/* 예약 모달 */}
             <ReservationModal
