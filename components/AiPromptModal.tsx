@@ -13,7 +13,7 @@ type AiPromptModalProps = {
     aiLoading: boolean;
     onSubmit: () => void;
 
-    // ✅ 공통 발송 조건의 언어 상태를 그대로 사용
+    // ✅ 공통 발송 조건의 언어 상태를 그대로 사용 - 언어 선택!!!!
     enabledLangs: string[];
     setEnabledLangs: React.Dispatch<React.SetStateAction<string[]>>;
 };
