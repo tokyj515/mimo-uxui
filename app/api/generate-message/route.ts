@@ -6,134 +6,283 @@ const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY!,
 });
 
+type SendType = "SMS" | "MMS" | "RCS_MMS" | "RCS_CAROUSEL";
+
+/**
+ * 프롬프트에서 메시지 타입을 읽어오기
+ * - "[메시지 타입]" 섹션 형태를 우선 파싱
+ * - 없으면 본문 내 "SMS/MMS/RCS..." 단어로 보조 파싱
+ */
+function extractSendTypeFromPrompt(prompt: string): SendType | undefined {
+    const p = (prompt ?? "").toString();
+
+    // 1) 섹션 기반 파싱: [메시지 타입] ... 다음 줄/구간
+    const sectionMatch = p.match(/\[\s*메시지\s*타입\s*\]\s*([\s\S]*?)(\n\s*\[|$)/i);
+    if (sectionMatch?.[1]) {
+        const block = sectionMatch[1].trim();
+
+        if (/RCS\s*[_-]?\s*CAROUSEL|RCS\s*캐러셀|캐러셀/i.test(block)) return "RCS_CAROUSEL";
+        if (/RCS\s*[_-]?\s*MMS|RCS\s*MMS/i.test(block)) return "RCS_MMS";
+        if (/\bMMS\b/i.test(block)) return "MMS";
+        if (/\bSMS\b/i.test(block)) return "SMS";
+    }
+
+    // 2) 보조 파싱: 섹션이 없으면 전체 텍스트에서 키워드 탐색(우선순위)
+    if (/RCS\s*[_-]?\s*CAROUSEL|RCS\s*캐러셀|캐러셀/i.test(p)) return "RCS_CAROUSEL";
+    if (/RCS\s*[_-]?\s*MMS|RCS\s*MMS/i.test(p)) return "RCS_MMS";
+    if (/\bMMS\b/i.test(p)) return "MMS";
+    if (/\bSMS\b/i.test(p)) return "SMS";
+
+    return undefined;
+}
+
+/** 비어있는 객체인지 간단 체크 */
+function isEmptyObject(v: unknown): boolean {
+    return !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v as any).length === 0;
+}
+
 export async function POST(req: NextRequest) {
     try {
-        const { prompt, enabledLangs, slideCount, adType } = await req.json();
+        const body = await req.json();
 
+        const prompt: string = String(body?.prompt ?? "");
+        const enabledLangs: string[] = Array.isArray(body?.enabledLangs) ? body.enabledLangs : ["ko"];
+        const slideCountRaw = body?.slideCount;
+        const adType: "비광고" | "광고" = body?.adType === "광고" ? "광고" : "비광고";
+
+        /**
+         * ✅ 핵심 정책:
+         * - 유저 프롬프트에 "메시지 타입" 언급이 있으면 그 타입을 사용
+         * - 없으면 무조건 MMS
+         */
+        const promptSendType = extractSendTypeFromPrompt(prompt);
+        const chosenSendType: SendType = promptSendType ?? "MMS";
+
+        // 캐러셀일 때만 slideCount 정규화 (2~5)
+        const normalizedSlideCount =
+            typeof slideCountRaw === "number" && Number.isFinite(slideCountRaw)
+                ? Math.min(Math.max(slideCountRaw, 2), 5)
+                : 3;
+
+        const langsText =
+            Array.isArray(enabledLangs) && enabledLangs.length > 0 ? enabledLangs.join(", ") : "ko";
+
+        // 🔧 시스템 프롬프트 (선택된 타입 고정 + RCS면 mms 필수 + 가독성 하드룰 + 빈 contents 금지)
         const systemPrompt = `
-        
-        당신은 통신사 고객 메시지(RCS, RCS Carousel, MMS, SMS)를 전문적으로 기획하는 AI입니다.
-사용자의 자연어 요청을 분석하여 아래 구조를 **정확한 JSON 형태로만** 출력해야 합니다.
-설명 문장, 여분의 텍스트는 절대 포함하지 마십시오.
-반드시 모든 필드는 누락 없이 포함해야 합니다.
+당신은 통신사(KT)·공공기관·금융사·쇼핑몰 등에서 고객에게 발송하는 실제 문자(SMS/MMS/RCS) 메시지를 쓰는 전문 카피라이터입니다.
 
----------------------
-[출력해야 하는 JSON 구조]
+목표: 운영 환경에 바로 넣어도 될 정도로 완성된 메시지를, 아래 규칙과 JSON 스키마에 맞춰 생성하세요.
+
+[이번 요청의 sendType 고정 - 절대 변경 금지]
+- 이번 응답의 sendType은 반드시 "${chosenSendType}" 입니다.
+- 절대 다른 타입으로 바꾸지 마세요.
+
+[타입별 필수 채움 규칙(중요)]
+- sendType="SMS"         → sms.contents는 반드시 채움 (mms/rcs는 비워도 됨)
+- sendType="MMS"         → mms.contents는 반드시 채움 (sms/rcs는 비워도 됨)
+- sendType="RCS_MMS"     → rcs.contents(슬라이드 1장) + mms.contents 둘 다 반드시 채움
+- sendType="RCS_CAROUSEL"→ rcs.contents(슬라이드 2~5장) + mms.contents 둘 다 반드시 채움
+- 어떤 경우에도 선택된 타입의 contents를 비워두면 실패입니다.
+
+[가독성/성의 하드룰(중요)]
+- 문단 구분 필수(줄바꿈/섹션헤더/불릿)
+- 두세 줄짜리 성의 없는 문장 금지
+- 최소 조건:
+  * SMS: 6줄 이상 + 문의/유의사항 포함
+  * MMS: body 9줄 이상 + 섹션 헤더(대괄호) 2개 이상 + 불릿 4개 이상
+  * RCS_MMS: RCS body 5줄 이상 + MMS body 10줄 이상
+  * RCS_CAROUSEL: 각 카드 body 4줄 이상 + 카드 간 중복 금지 + MMS body 12줄 이상
+
+[광고/비광고 규칙]
+- 광고(adType="광고"):
+  * 첫 줄 "(광고)[KT안내]" 형태 권장
+  * 혜택/조건 리스트(불릿)
+  * 유의사항 문단
+  * 마지막 줄: "[무료수신거부] 080-451-0114" 필수
+- 비광고(adType="비광고"):
+  * "[KT안내]" 또는 "[안내]"로 시작
+  * 인사 + 발송 사유 + 고객 행동 + 문의처 + 마무리
+
+[recommendedCheckTypes]
+- 값: "법률","정보보호","리스크","공정경쟁"
+- 2개 이상 반드시 포함(절대 ["법률"]만 금지)
+- 광고/프로모션이면 ["법률","공정경쟁"](+리스크) 권장
+
+[예약값]
+- common.reservationDate: "YYYY-MM-DD"
+- common.reservationTime: "HH:MM"
+- 절대 비우지 말고 채움
+
+[출력 JSON 형식]
+마크다운/설명 문장 금지. JSON만 출력.
+
 {
-  "sendType": "SMS" | "MMS" | "RCS" | "RCS_CAROUSEL",
-
-  "rcs": {
-    "slideCount": number,             // RCS_CAROUSEL 선택 시 2~5장, RCS면 1장
-    "langs": string[],                // 예: ["ko", "en"]
-    "contents": {
-      "<언어코드>": {
-        "slides": [
-          {
-            "title": string,
-            "body": string,
-            "imageName": "",
-            "buttonCount": 0 | 1 | 2,
-            "button1Label": string,
-            "button1Url": string,
-            "button2Label": string,
-            "button2Url": string
-          }
-        ]
-      }
-    }
-  },
-
-  "mms": {
-    "langs": string[],
-    "contents": {
-      "<언어코드>": {
-        "title": string,
-        "body": string,
-        "imageName": ""
-      }
-    }
-  },
-
+  "sendType": "SMS" | "MMS" | "RCS_MMS" | "RCS_CAROUSEL",
   "common": {
     "messageName": string,
     "adType": "광고" | "비광고",
     "sendPurpose": "공지" | "이벤트" | "알림" | "기타",
     "callbackType": "대표번호" | "080" | "개인번호",
     "enabledLangs": string[],
-    "reservationDate": "YYYY-MM-DD",
-    "reservationTime": "HH:MM"
-  }
+    "reservationDate": string,
+    "reservationTime": string,
+    "myktLink": "포함" | "미포함",
+    "closingRemark": "포함" | "미포함",
+    "imagePosition": "위" | "아래"
+  },
+  "sms": {
+    "contents": {
+      "<언어코드>": { "body": string }
+    }
+  },
+  "rcs": {
+    "slideCount": number,
+    "contents": {
+      "<언어코드>": {
+        "slides": [
+          {
+            "title": string,
+            "body": string,
+            "imageName": string,
+            "buttonCount": 0 | 1 | 2,
+            "button1Label": string,
+            "button2Label": string,
+            "button1Url": string,
+            "button2Url": string
+          }
+        ]
+      }
+    }
+  },
+  "mms": {
+    "contents": {
+      "<언어코드>": { "title": string, "body": string, "imageName": string }
+    }
+  },
+  "recommendedCheckTypes": ("법률" | "정보보호" | "리스크" | "공정경쟁")[]
 }
-
----------------------
-[메시지 판단 규칙]
-
-1) 메시지 종류(sendType) 판단 규칙:
-- 매우 짧고 단일 문장 → SMS
-- 단일 이미지 + 긴 문구 → MMS
-- 버튼이 필요하거나 리치 텍스트 → RCS
-- 슬라이드 여러 개로 나누면 효과적 → RCS_CAROUSEL
-
-2) RCS_CAROUSEL일 경우:
-- slideCount는 2~5장 중 가장 적절한 수로 판단
-- 각 슬라이드는 제목·본문·버튼 제안
-
-3) 광고 판단 규칙(adType):
-- 이벤트, 할인, 프로모션, 신청, 혜택 → "광고"
-- 요금 안내, 공지, 의무 고지 → "비광고"
-
-4) 버튼 자동 판단:
-- 상세 설명 필요 → 버튼 1개 ("자세히 보기")
-- 신청/참여 유도 → 버튼 1~2개
-- 안내만 필요한 경우 → 버튼 0개
-
-5) 언어 자동 판단:
-- 사용자가 “다국어로”, "영어 버전도", "베트남어 사용자에게도" 등의 표현을 하면 해당 언어 추가
-- 기본은 ["ko"]
-
-6) 예약 시간 자동 판단:
-- 날짜가 언급되면 그 날짜를 사용
-- “오늘”, “내일”, “이번 주말” 같은 말은 실제 날짜로 해석
-- 시간이 언급되면 그대로 사용, 없으면 09:00로 설정
-
-7) 모든 메시지는 자연스럽고 실제 고객 안내에 적합해야 합니다.
-8) JSON 외 텍스트는 절대 출력하지 마십시오.
-9) imageName은 항상 빈 문자열("")로 두십시오.
-
----------------------
-이제 사용자 요청을 기반으로 위 JSON을 생성하십시오.
-
-        
-        
-        `.trim();
+`.trim();
 
         const userPrompt = `
-프롬프트: ${prompt}
-선택된 언어: ${enabledLangs.join(", ")}
-슬라이드 개수: ${slideCount}
-광고 여부: ${adType}
+[요청 설명]
+${prompt}
+
+[추가 정보]
+- 기본 광고 여부(adType): ${adType}
+- 사용 언어 코드(enabledLangs): ${langsText}
+- 서버 적용 sendType(고정): ${chosenSendType}
+${
+            chosenSendType === "RCS_CAROUSEL"
+                ? `- 요청된 RCS Carousel 카드 수(slideCount): ${normalizedSlideCount}`
+                : ""
+        }
+
+반드시 JSON 스키마 그대로만 출력하세요.
+선택된 타입의 contents는 절대 비우지 마세요.
 `.trim();
 
         const completion = await client.chat.completions.create({
             model: "gpt-4o-mini",
             response_format: { type: "json_object" },
+            temperature: 0.4,
+            max_tokens: 1400,
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt },
             ],
         });
 
-        const raw = completion.choices[0].message.content;
+        const raw = completion.choices[0].message.content ?? "{}";
+        const data = JSON.parse(raw);
 
-        // response_format: json_object 덕분에 JSON 문자열 100% 보장됨
-        const data = JSON.parse(raw!);
+        // ✅ 서버 안전장치: sendType은 무조건 서버가 결정한 값으로 고정
+        data.sendType = chosenSendType;
+
+        // ✅ 캐러셀이면 slideCount 보정
+        if (chosenSendType === "RCS_CAROUSEL") {
+            data.rcs = data.rcs ?? {};
+            data.rcs.slideCount = normalizedSlideCount;
+        }
+
+        // ✅ contents 누락/비어있을 때 최소 보정 (UI가 죽지 않게)
+        //    - 선택된 타입에 맞는 섹션은 반드시 존재하도록 만들어줌
+        const langs = enabledLangs.length ? enabledLangs : ["ko"];
+        const firstLang = langs[0] ?? "ko";
+
+        data.sms = data.sms ?? { contents: {} };
+        data.rcs = data.rcs ?? { slideCount: chosenSendType === "RCS_CAROUSEL" ? normalizedSlideCount : 1, contents: {} };
+        data.mms = data.mms ?? { contents: {} };
+
+        if (chosenSendType === "SMS") {
+            if (!data.sms.contents || isEmptyObject(data.sms.contents)) {
+                data.sms.contents = { [firstLang]: { body: "" } };
+            }
+        }
+
+        if (chosenSendType === "MMS") {
+            if (!data.mms.contents || isEmptyObject(data.mms.contents)) {
+                data.mms.contents = { [firstLang]: { title: "", body: "", imageName: "" } };
+            }
+        }
+
+        if (chosenSendType === "RCS_MMS") {
+            // rcs 1장 + mms 필수
+            if (!data.rcs.contents || isEmptyObject(data.rcs.contents)) {
+                data.rcs.contents = {
+                    [firstLang]: {
+                        slides: [
+                            {
+                                title: "",
+                                body: "",
+                                imageName: "",
+                                buttonCount: 1,
+                                button1Label: "",
+                                button2Label: "",
+                                button1Url: "https://example.com",
+                                button2Url: "",
+                            },
+                        ],
+                    },
+                };
+            }
+            if (!data.mms.contents || isEmptyObject(data.mms.contents)) {
+                data.mms.contents = { [firstLang]: { title: "", body: "", imageName: "" } };
+            }
+            data.rcs.slideCount = 1;
+        }
+
+        if (chosenSendType === "RCS_CAROUSEL") {
+            // rcs 2~5장 + mms 필수
+            if (!data.rcs.contents || isEmptyObject(data.rcs.contents)) {
+                data.rcs.contents = {
+                    [firstLang]: {
+                        slides: Array.from({ length: normalizedSlideCount }).map(() => ({
+                            title: "",
+                            body: "",
+                            imageName: "",
+                            buttonCount: 1,
+                            button1Label: "",
+                            button2Label: "",
+                            button1Url: "https://example.com",
+                            button2Url: "",
+                        })),
+                    },
+                };
+            }
+            if (!data.mms.contents || isEmptyObject(data.mms.contents)) {
+                data.mms.contents = { [firstLang]: { title: "", body: "", imageName: "" } };
+            }
+            data.rcs.slideCount = normalizedSlideCount;
+        }
+
+        // ✅ recommendedCheckTypes 비어있으면 기본값 보정(광고면 법률+공정경쟁, 그 외 법률+리스크)
+        if (!Array.isArray(data.recommendedCheckTypes) || data.recommendedCheckTypes.length < 2) {
+            data.recommendedCheckTypes = adType === "광고" ? ["법률", "공정경쟁"] : ["법률", "리스크"];
+        }
 
         return NextResponse.json(data);
     } catch (err) {
         console.error("[generate-message ERROR]", err);
-        return NextResponse.json(
-            { error: "FAILED_TO_GENERATE" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: "FAILED_TO_GENERATE" }, { status: 500 });
     }
 }

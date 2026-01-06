@@ -192,10 +192,9 @@ const MmsEditor: React.FC<MmsEditorProps> = ({
                                     <div className="text-xs font-semibold text-slate-900 truncate">
                                         {currentMms.title || "메시지 제목 미입력"}
                                     </div>
-                                    <p className="text-[11px] leading-snug text-slate-700 max-h-32 overflow-hidden">
-                                        {currentMms.body ||
-                                            "작성 중인 MMS 메시지 내용이 이 영역에 표시됩니다."}
-                                    </p>
+                                    <div className="text-[11px] leading-snug text-slate-700 whitespace-pre-line overflow-y-auto max-h-48 pr-1">
+                                        {currentMms.body || "작성 중인 MMS 메시지 내용이 이 영역에 표시됩니다."}
+                                    </div>
                                 </div>
                             </div>
                         </div>

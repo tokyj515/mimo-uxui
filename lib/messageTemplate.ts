@@ -38,6 +38,8 @@ export const HOUR_SLOTS = Array.from(
     },
 );
 
+// ───────── 메시지 내용 타입들 ─────────
+
 export type Slide = {
     title: string;
     body: string;
@@ -60,6 +62,13 @@ export type MmsContent = {
     body: string;
     imageName?: string;
 };
+
+// ✅ 새로 추가: SMS 내용 타입
+export type SmsContent = {
+    body: string;   // SMS는 본문만
+};
+
+// ───────── 초기 상태 생성 유틸 ─────────
 
 export const createEmptySlides = (count = 3): Slide[] =>
     Array.from({ length: count }, () => ({
@@ -85,6 +94,15 @@ export const createInitialMmsState = (): Record<string, MmsContent> => {
     const base: Record<string, MmsContent> = {};
     LANGS.forEach((l) => {
         base[l.code] = { title: "", body: "", imageName: "" };
+    });
+    return base;
+};
+
+// ✅ 새로 추가: SMS용 초기 상태
+export const createInitialSmsState = (): Record<string, SmsContent> => {
+    const base: Record<string, SmsContent> = {};
+    LANGS.forEach((l) => {
+        base[l.code] = { body: "" };
     });
     return base;
 };
